@@ -1,0 +1,15 @@
+﻿.env
+*.db
+venv/
+__pycache__/
+*.pyc
+*.pkl
+.ipynb_checkpoints/
+models/*.pkl
+logs/
+mlruns/
+*.egg-info/
+.DS_Store
+fix_notebooks.py
+fix_root.py
+fix_figdir.py

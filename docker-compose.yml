@@ -1,0 +1,109 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Network Security Analytics Platform — Docker Compose
+#
+# Services
+# --------
+#   db         : PostgreSQL (production database)
+#   api        : FastAPI prediction service
+#   dashboard  : Streamlit analytics dashboard
+#   pgadmin    : PostgreSQL admin UI (dev only)
+#
+# Usage
+# -----
+#   docker compose up -d          # Start all services
+#   docker compose up db -d       # Start only the database
+#   docker compose logs -f api    # Stream API logs
+#   docker compose down           # Stop all services
+#   docker compose down -v        # Stop + delete volumes (DATA LOSS)
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+
+  # ── PostgreSQL Database ─────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: netsec_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-netsec_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_DB: ${DB_NAME:-network_security_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./data/schemas/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-netsec_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI Prediction Service ──────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: netsec_api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-netsec_user}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-network_security_db}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    command: >
+      sh -c "
+        python -m src.db.connector --create &&
+        uvicorn src.api.app:app --host 0.0.0.0 --port 8000
+      "
+
+  # ── Streamlit Dashboard ─────────────────────────────────────────────────────
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: netsec_dashboard
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-netsec_user}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-network_security_db}
+    ports:
+      - "8501:8501"
+    depends_on:
+      - db
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    command: streamlit run dashboard/app.py --server.port 8501 --server.address 0.0.0.0
+
+  # ── pgAdmin (Dev Only) ──────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: netsec_pgadmin
+    restart: unless-stopped
+    profiles: ["dev"]                  # Only starts with: docker compose --profile dev up
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  default:
+    name: netsec_network
