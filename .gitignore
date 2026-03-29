@@ -13,3 +13,7 @@ mlruns/
 fix_notebooks.py
 fix_root.py
 fix_figdir.py
+data/Beth/
+data/unsw_nb15/
+data/Cyber_Attacks/
+data/raw/
