@@ -1,0 +1,52 @@
+# Network Security Capstone - Dependencies
+# Install: pip install -r requirements.txt
+
+# ── Core Data Stack ────────────────────────────────────────────────────────────
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.11.0
+
+# ── Machine Learning ──────────────────────────────────────────────────────────
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+imbalanced-learn>=0.11.0          # SMOTE for class imbalance
+
+# ── Database & ORM ────────────────────────────────────────────────────────────
+sqlalchemy>=2.0.0                  # ORM + connection management
+alembic>=1.12.0                    # Database migrations
+psycopg2-binary>=2.9.0             # PostgreSQL adapter
+python-dotenv>=1.0.0               # .env file loading
+
+# ── API / Model Serving ───────────────────────────────────────────────────────
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.4.0
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+streamlit>=1.28.0
+plotly>=5.17.0
+altair>=5.1.0
+
+# ── Visualization ─────────────────────────────────────────────────────────────
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# ── Experiment Tracking ───────────────────────────────────────────────────────
+mlflow>=2.8.0
+
+# ── Data Validation ───────────────────────────────────────────────────────────
+great-expectations>=0.18.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+joblib>=1.3.0                      # Model serialization
+PyYAML>=6.0.1                      # Config files
+click>=8.1.0                       # CLI tools
+tqdm>=4.66.0                       # Progress bars
+loguru>=0.7.0                      # Structured logging
+python-jose[cryptography]>=3.3.0   # JWT for API auth
+passlib[bcrypt]>=1.7.4             # Password hashing
+
+# ── Notebook ──────────────────────────────────────────────────────────────────
+jupyterlab>=4.0.0
+ipywidgets>=8.1.0
+nbformat>=5.9.0

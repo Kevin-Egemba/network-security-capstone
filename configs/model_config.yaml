@@ -1,0 +1,92 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Model Configuration — Network Security Analytics Platform
+# ─────────────────────────────────────────────────────────────────────────────
+
+random_seed: 42
+
+# ── UNSW-NB15 Two-Stage Detection Pipeline ───────────────────────────────────
+unsw_nb15:
+  target_binary: label
+  target_multiclass: attack_cat
+  test_size: 0.2
+
+  stage1_binary:
+    models:
+      logistic_regression:
+        C: 1.0
+        max_iter: 1000
+        class_weight: balanced
+      random_forest:
+        n_estimators: 200
+        max_depth: 15
+        class_weight: balanced
+        n_jobs: -1
+      xgboost:
+        n_estimators: 300
+        max_depth: 6
+        learning_rate: 0.1
+        scale_pos_weight: 2.0
+        eval_metric: logloss
+    primary_metric: roc_auc
+
+  stage2_multiclass:
+    models:
+      random_forest:
+        n_estimators: 200
+        class_weight: balanced
+        n_jobs: -1
+      xgboost:
+        n_estimators: 300
+        max_depth: 6
+        learning_rate: 0.1
+    use_smote: true
+    smote_k_neighbors: 5
+    primary_metric: f1_weighted
+
+# ── BETH Unsupervised / Anomaly Detection ─────────────────────────────────────
+beth:
+  features_to_drop: [processId, threadId, parentProcessId, userId, mountNamespace,
+                     returnValue, argsNum, processName, hostName]
+
+  kmeans:
+    n_clusters_range: [2, 3, 4, 5, 6, 8, 10]
+    init: k-means++
+    n_init: 10
+
+  dbscan:
+    eps_values: [0.3, 0.5, 0.8, 1.0]
+    min_samples_values: [5, 10, 20]
+
+  isolation_forest:
+    n_estimators: 200
+    contamination: 0.05
+    random_state: 42
+
+  gmm:
+    n_components_range: [2, 3, 4, 5, 6]
+    covariance_type: full
+
+# ── Cybersecurity Attacks (Synthetic) ─────────────────────────────────────────
+cyber_attacks:
+  target: Attack Type
+  test_size: 0.2
+
+  feature_sets:
+    metadata_only: [Port, Protocol, Packet Length, Packet Type, Traffic Type,
+                    Anomaly Scores, Action Taken]
+    with_leakage: [Port, Protocol, Packet Length, Packet Type, Traffic Type,
+                   Anomaly Scores, Action Taken, Severity Level, Malware Indicators]
+
+  models:
+    random_forest:
+      n_estimators: 200
+      class_weight: balanced
+    xgboost:
+      n_estimators: 300
+      learning_rate: 0.1
+
+# ── Feature Engineering ───────────────────────────────────────────────────────
+feature_engineering:
+  scaling: standard           # standard | minmax | robust
+  high_cardinality_threshold: 50
+  variance_threshold: 0.01

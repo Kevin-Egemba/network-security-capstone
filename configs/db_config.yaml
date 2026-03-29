@@ -1,0 +1,47 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Database Configuration — Network Security Analytics Platform
+# Actual connection strings come from .env / environment variables.
+# ─────────────────────────────────────────────────────────────────────────────
+
+default_engine: sqlite           # sqlite | postgresql
+
+sqlite:
+  db_file: ./network_security.db
+  echo: false
+  check_same_thread: false
+
+postgresql:
+  host: localhost
+  port: 5432
+  database: network_security_db
+  pool_size: 10
+  max_overflow: 20
+  pool_timeout: 30
+  pool_pre_ping: true
+
+# ── Ingestion Settings ────────────────────────────────────────────────────────
+ingestion:
+  chunk_size: 10000              # rows per batch insert
+  if_exists: append              # fail | replace | append
+  index: false
+
+# ── Schema Versioning ─────────────────────────────────────────────────────────
+schema_version: "1.0.0"
+
+# ── User Roles ────────────────────────────────────────────────────────────────
+roles:
+  - name: admin
+    description: Full access — manage users, models, and data
+    permissions: [read, write, delete, admin]
+
+  - name: analyst
+    description: Read access + can run queries and view dashboards
+    permissions: [read, query, dashboard]
+
+  - name: data_scientist
+    description: Can train models, run experiments, view results
+    permissions: [read, write, model_train, dashboard]
+
+  - name: viewer
+    description: Read-only access to dashboards and reports
+    permissions: [read, dashboard]
