@@ -32,16 +32,6 @@ from sqlalchemy import text
 from src.config import Paths
 from src.db.connector import DatabaseManager
 
-# Auto-seed database on first run
-def _auto_seed():
-    try:
-        from seed_demo_db import seed
-        seed()
-    except Exception as e:
-        pass
-
-_auto_seed()
-
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Network Security Analytics",
@@ -59,6 +49,112 @@ def get_manager() -> DatabaseManager:
 
 
 mgr = get_manager()
+
+
+# ── Auto-seed on first run ────────────────────────────────────────────────────
+@st.cache_resource
+def auto_seed():
+    try:
+        with mgr.engine.connect() as conn:
+            count = conn.execute(text("SELECT COUNT(*) FROM network_events")).scalar()
+            if count == 0:
+                import random
+                from src.db.models import (
+                    NetworkEvent, SystemCallEvent, ModelRun,
+                    Alert, AlertSeverity, AlertStatus, DatasetRegistry
+                )
+                with mgr.get_session() as session:
+                    # Register dataset
+                    registry = DatasetRegistry(
+                        name="unsw_nb15_demo",
+                        source_file="demo",
+                        row_count=5000,
+                        column_count=45,
+                        description="UNSW-NB15 demo sample"
+                    )
+                    session.add(registry)
+                    session.flush()
+
+                    # Network events
+                    attack_cats = ["DoS", "Exploits", "Reconnaissance", "Generic",
+                                   "Fuzzers", "Backdoor", "Analysis", "Shellcode", "Worms"]
+                    protos = ["tcp", "udp", "icmp", "arp"]
+                    states = ["FIN", "INT", "REQ", "CON", "RST"]
+                    events = []
+                    for i in range(5000):
+                        is_attack = random.random() > 0.55
+                        events.append(NetworkEvent(
+                            dataset_id=registry.id, split="train",
+                            proto=random.choice(protos),
+                            service=random.choice(["-", "http", "ftp", "smtp", "ssh", "dns"]),
+                            state=random.choice(states),
+                            dur=round(random.uniform(0, 100), 4),
+                            sbytes=random.randint(0, 100000),
+                            dbytes=random.randint(0, 100000),
+                            sttl=random.randint(0, 255),
+                            dttl=random.randint(0, 255),
+                            spkts=random.randint(1, 1000),
+                            dpkts=random.randint(1, 1000),
+                            label=1 if is_attack else 0,
+                            attack_cat=random.choice(attack_cats) if is_attack else "Normal",
+                        ))
+                    session.bulk_save_objects(events)
+
+                    # Syscall events
+                    syscalls = []
+                    for i in range(3000):
+                        syscalls.append(SystemCallEvent(
+                            dataset_id=registry.id, split="train",
+                            event_id=random.randint(1, 500),
+                            args_num=random.randint(0, 10),
+                            return_value=random.randint(-1, 100),
+                            sus=round(random.uniform(0, 1), 4),
+                            evil=1 if random.random() > 0.85 else 0,
+                        ))
+                    session.bulk_save_objects(syscalls)
+
+                    # Model runs
+                    for i, (algo, dataset) in enumerate([
+                        ("RandomForest", "UNSW-NB15"),
+                        ("XGBoost", "UNSW-NB15"),
+                        ("LogisticRegression", "UNSW-NB15"),
+                        ("IsolationForest", "BETH"),
+                        ("KMeans", "BETH"),
+                    ]):
+                        session.add(ModelRun(
+                            run_name=f"run_{algo.lower()}_{i+1}",
+                            model_type="supervised" if i < 3 else "unsupervised",
+                            dataset_name=dataset,
+                            algorithm=algo,
+                            accuracy=round(random.uniform(0.80, 0.99), 4),
+                            roc_auc=round(random.uniform(0.85, 0.985), 4),
+                            f1_weighted=round(random.uniform(0.80, 0.98), 4),
+                            f1_macro=round(random.uniform(0.75, 0.97), 4),
+                        ))
+
+                    # Alerts
+                    for title, severity, attack_type, confidence in [
+                        ("High-volume DoS attack detected", AlertSeverity.critical, "DoS", 0.94),
+                        ("Exploit attempt on HTTP service", AlertSeverity.high, "Exploits", 0.88),
+                        ("Fuzzing activity on port 443", AlertSeverity.medium, "Fuzzers", 0.71),
+                        ("Reconnaissance scan detected", AlertSeverity.low, "Reconnaissance", 0.65),
+                        ("Backdoor connection attempt", AlertSeverity.critical, "Backdoor", 0.91),
+                    ]:
+                        session.add(Alert(
+                            title=title, severity=severity,
+                            status=AlertStatus.open,
+                            attack_type=attack_type,
+                            confidence=confidence,
+                            source_dataset="unsw_nb15",
+                            description=f"{attack_type} detected with {confidence:.0%} confidence."
+                        ))
+
+                    session.commit()
+    except Exception:
+        pass
+
+
+auto_seed()
 
 
 # ── Sidebar navigation ────────────────────────────────────────────────────────
@@ -215,14 +311,10 @@ elif page == "Threat Intelligence":
             st.markdown("#### Recent Alerts")
             st.dataframe(df_alerts, use_container_width=True)
         else:
-            st.info("No alerts in database yet. Run a model prediction to generate alerts.")
+            st.info("No alerts in database yet.")
 
     except Exception as e:
-        st.info(
-            "Load data first: run `python -m src.db.ingest --all` "
-            "to populate the database with UNSW-NB15 and BETH data."
-        )
-        st.caption(f"Detail: {e}")
+        st.info(f"Load data first. Detail: {e}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -239,7 +331,7 @@ elif page == "Model Performance":
         )
 
         if df_runs.empty:
-            st.info("No model runs recorded yet. Run notebooks 03 or 04 to train models.")
+            st.info("No model runs recorded yet.")
         else:
             st.markdown("#### All Experiment Runs")
             st.dataframe(
@@ -320,7 +412,8 @@ elif page == "Live Detection":
                 "and save the model to `models/two_stage_detector.pkl`."
             )
         else:
-            import joblib, numpy as np
+            import joblib
+            import numpy as np
             model = joblib.load(model_path)
             X = np.array([[dur, sbytes, dbytes, sttl, dttl, spkts, dpkts]])
             try:
@@ -427,12 +520,11 @@ elif page == "User Management":
         )
 
         if df_users.empty:
-            st.info("No users in database. Run `python -m src.db.connector --create` to bootstrap admin.")
+            st.info("No users in database.")
         else:
             st.markdown("#### Current Users")
             st.dataframe(df_users, use_container_width=True)
 
-            # Role breakdown
             role_counts = df_users["role"].value_counts().reset_index()
             role_counts.columns = ["role", "count"]
             fig = px.pie(role_counts, values="count", names="role",
