@@ -46,7 +46,6 @@ st.set_page_config(
 def get_manager() -> DatabaseManager:
     mgr = DatabaseManager()
     mgr.create_tables()
-    mgr.bootstrap_admin()
     return mgr
 
 
