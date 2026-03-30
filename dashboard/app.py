@@ -32,6 +32,16 @@ from sqlalchemy import text
 from src.config import Paths
 from src.db.connector import DatabaseManager
 
+# Auto-seed database on first run
+def _auto_seed():
+    try:
+        from seed_demo_db import seed
+        seed()
+    except Exception as e:
+        pass
+
+_auto_seed()
+
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Network Security Analytics",
