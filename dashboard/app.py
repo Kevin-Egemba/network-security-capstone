@@ -52,7 +52,6 @@ mgr = get_manager()
 
 
 # ── Auto-seed on first run ────────────────────────────────────────────────────
-@st.cache_resource
 def auto_seed():
     try:
         with mgr.engine.connect() as conn:
