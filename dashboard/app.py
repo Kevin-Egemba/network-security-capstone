@@ -18,6 +18,7 @@ Run
 """
 
 import sys
+import random
 from pathlib import Path
 
 # Ensure project root is on the path
@@ -45,6 +46,7 @@ st.set_page_config(
 def get_manager() -> DatabaseManager:
     mgr = DatabaseManager()
     mgr.create_tables()
+    mgr.bootstrap_admin()
     return mgr
 
 
@@ -54,103 +56,96 @@ mgr = get_manager()
 # ── Auto-seed on first run ────────────────────────────────────────────────────
 def auto_seed():
     try:
+        from src.db.models import (
+            NetworkEvent, SystemCallEvent, ModelRun,
+            Alert, AlertSeverity, AlertStatus, DatasetRegistry
+        )
+
         with mgr.engine.connect() as conn:
             count = conn.execute(text("SELECT COUNT(*) FROM network_events")).scalar()
-            if count == 0:
-                import random
-                from src.db.models import (
-                    NetworkEvent, SystemCallEvent, ModelRun,
-                    Alert, AlertSeverity, AlertStatus, DatasetRegistry
+
+        if count == 0:
+            with mgr.get_session() as session:
+                registry = DatasetRegistry(
+                    name="demo",
+                    source_file="demo",
+                    row_count=5000,
+                    column_count=45,
+                    description="Demo data for Streamlit Cloud"
                 )
-                with mgr.get_session() as session:
-                    # Register dataset
-                    registry = DatasetRegistry(
-                        name="unsw_nb15_demo",
-                        source_file="demo",
-                        row_count=5000,
-                        column_count=45,
-                        description="UNSW-NB15 demo sample"
-                    )
-                    session.add(registry)
-                    session.flush()
+                session.add(registry)
+                session.flush()
 
-                    # Network events
-                    attack_cats = ["DoS", "Exploits", "Reconnaissance", "Generic",
-                                   "Fuzzers", "Backdoor", "Analysis", "Shellcode", "Worms"]
-                    protos = ["tcp", "udp", "icmp", "arp"]
-                    states = ["FIN", "INT", "REQ", "CON", "RST"]
-                    events = []
-                    for i in range(5000):
-                        is_attack = random.random() > 0.55
-                        events.append(NetworkEvent(
-                            dataset_id=registry.id, split="train",
-                            proto=random.choice(protos),
-                            service=random.choice(["-", "http", "ftp", "smtp", "ssh", "dns"]),
-                            state=random.choice(states),
-                            dur=round(random.uniform(0, 100), 4),
-                            sbytes=random.randint(0, 100000),
-                            dbytes=random.randint(0, 100000),
-                            sttl=random.randint(0, 255),
-                            dttl=random.randint(0, 255),
-                            spkts=random.randint(1, 1000),
-                            dpkts=random.randint(1, 1000),
-                            label=1 if is_attack else 0,
-                            attack_cat=random.choice(attack_cats) if is_attack else "Normal",
-                        ))
-                    session.bulk_save_objects(events)
+                # Network events
+                session.bulk_save_objects([NetworkEvent(
+                    dataset_id=registry.id,
+                    split="train",
+                    proto=random.choice(["tcp", "udp", "icmp"]),
+                    service=random.choice(["-", "http", "ssh", "dns", "ftp"]),
+                    state=random.choice(["FIN", "INT", "REQ", "CON"]),
+                    dur=round(random.uniform(0, 100), 4),
+                    sbytes=random.randint(0, 100000),
+                    dbytes=random.randint(0, 100000),
+                    sttl=random.randint(0, 255),
+                    dttl=random.randint(0, 255),
+                    spkts=random.randint(1, 1000),
+                    dpkts=random.randint(1, 1000),
+                    label=1 if random.random() > 0.55 else 0,
+                    attack_cat=random.choice(["DoS", "Exploits", "Reconnaissance", "Fuzzers", "Backdoor"]) if random.random() > 0.55 else "Normal"
+                ) for _ in range(5000)])
 
-                    # Syscall events
-                    syscalls = []
-                    for i in range(3000):
-                        syscalls.append(SystemCallEvent(
-                            dataset_id=registry.id, split="train",
-                            event_id=random.randint(1, 500),
-                            args_num=random.randint(0, 10),
-                            return_value=random.randint(-1, 100),
-                            sus=round(random.uniform(0, 1), 4),
-                            evil=1 if random.random() > 0.85 else 0,
-                        ))
-                    session.bulk_save_objects(syscalls)
+                # Syscall events
+                session.bulk_save_objects([SystemCallEvent(
+                    dataset_id=registry.id,
+                    split="train",
+                    event_id=random.randint(1, 500),
+                    args_num=random.randint(0, 10),
+                    return_value=random.randint(-1, 100),
+                    sus=round(random.uniform(0, 1), 4),
+                    evil=1 if random.random() > 0.85 else 0
+                ) for _ in range(3000)])
 
-                    # Model runs
-                    for i, (algo, dataset) in enumerate([
-                        ("RandomForest", "UNSW-NB15"),
-                        ("XGBoost", "UNSW-NB15"),
-                        ("LogisticRegression", "UNSW-NB15"),
-                        ("IsolationForest", "BETH"),
-                        ("KMeans", "BETH"),
-                    ]):
-                        session.add(ModelRun(
-                            run_name=f"run_{algo.lower()}_{i+1}",
-                            model_type="supervised" if i < 3 else "unsupervised",
-                            dataset_name=dataset,
-                            algorithm=algo,
-                            accuracy=round(random.uniform(0.80, 0.99), 4),
-                            roc_auc=round(random.uniform(0.85, 0.985), 4),
-                            f1_weighted=round(random.uniform(0.80, 0.98), 4),
-                            f1_macro=round(random.uniform(0.75, 0.97), 4),
-                        ))
+                # Model runs
+                for i, (algo, ds) in enumerate([
+                    ("RandomForest", "UNSW-NB15"),
+                    ("XGBoost", "UNSW-NB15"),
+                    ("LogisticRegression", "UNSW-NB15"),
+                    ("IsolationForest", "BETH"),
+                    ("KMeans", "BETH")
+                ]):
+                    session.add(ModelRun(
+                        run_name=f"run_{algo.lower()}_{i}",
+                        model_type="supervised" if i < 3 else "unsupervised",
+                        dataset_name=ds,
+                        algorithm=algo,
+                        accuracy=round(random.uniform(0.85, 0.99), 4),
+                        roc_auc=round(random.uniform(0.88, 0.985), 4),
+                        f1_weighted=round(random.uniform(0.85, 0.98), 4),
+                        f1_macro=round(random.uniform(0.80, 0.97), 4)
+                    ))
 
-                    # Alerts
-                    for title, severity, attack_type, confidence in [
-                        ("High-volume DoS attack detected", AlertSeverity.critical, "DoS", 0.94),
-                        ("Exploit attempt on HTTP service", AlertSeverity.high, "Exploits", 0.88),
-                        ("Fuzzing activity on port 443", AlertSeverity.medium, "Fuzzers", 0.71),
-                        ("Reconnaissance scan detected", AlertSeverity.low, "Reconnaissance", 0.65),
-                        ("Backdoor connection attempt", AlertSeverity.critical, "Backdoor", 0.91),
-                    ]:
-                        session.add(Alert(
-                            title=title, severity=severity,
-                            status=AlertStatus.open,
-                            attack_type=attack_type,
-                            confidence=confidence,
-                            source_dataset="unsw_nb15",
-                            description=f"{attack_type} detected with {confidence:.0%} confidence."
-                        ))
+                # Alerts
+                for title, sev, atype, conf in [
+                    ("High-volume DoS attack detected", AlertSeverity.critical, "DoS", 0.94),
+                    ("Exploit attempt on HTTP service", AlertSeverity.high, "Exploits", 0.88),
+                    ("Fuzzing activity on port 443", AlertSeverity.medium, "Fuzzers", 0.71),
+                    ("Reconnaissance scan detected", AlertSeverity.low, "Reconnaissance", 0.65),
+                    ("Backdoor connection attempt", AlertSeverity.critical, "Backdoor", 0.91),
+                ]:
+                    session.add(Alert(
+                        title=title,
+                        severity=sev,
+                        status=AlertStatus.open,
+                        attack_type=atype,
+                        confidence=conf,
+                        source_dataset="unsw_nb15",
+                        description=f"{atype} detected with {conf:.0%} confidence."
+                    ))
 
-                    session.commit()
-    except Exception:
-        pass
+                session.commit()
+
+    except Exception as e:
+        st.warning(f"Seed info: {e}")
 
 
 auto_seed()
