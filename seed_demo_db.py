@@ -78,15 +78,25 @@ def seed():
         algorithms = ["RandomForest", "XGBoost", "LogisticRegression", "IsolationForest", "KMeans"]
         datasets = ["UNSW-NB15", "BETH", "Cyber Attacks"]
         for i, algo in enumerate(algorithms):
+            roc_auc = round(random.uniform(0.85, 0.985), 4)
+            spread = round(random.uniform(0.008, 0.025), 4)
             session.add(ModelRun(
                 run_name=f"run_{algo.lower()}_{i+1}",
                 model_type="supervised" if i < 3 else "unsupervised",
                 dataset_name=random.choice(datasets),
                 algorithm=algo,
                 accuracy=round(random.uniform(0.80, 0.99), 4),
-                roc_auc=round(random.uniform(0.85, 0.985), 4),
+                roc_auc=roc_auc,
                 f1_weighted=round(random.uniform(0.80, 0.98), 4),
                 f1_macro=round(random.uniform(0.75, 0.97), 4),
+                extra_metrics={
+                    "roc_auc_ci": {
+                        "point": roc_auc,
+                        "lower": round(max(0.0, roc_auc - spread), 4),
+                        "upper": round(min(1.0, roc_auc + spread), 4),
+                        "ci": 0.95,
+                    }
+                },
             ))
 
         # Sample alerts

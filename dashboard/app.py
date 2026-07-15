@@ -18,6 +18,7 @@ Run
 """
 
 import sys
+import json
 import random
 from pathlib import Path
 
@@ -145,15 +146,25 @@ def auto_seed():
                     ("IsolationForest", "BETH"),
                     ("KMeans", "BETH")
                 ]):
+                    roc_auc = round(random.uniform(0.88, 0.985), 4)
+                    spread = round(random.uniform(0.008, 0.025), 4)
                     session.add(ModelRun(
                         run_name=f"run_{algo.lower()}_{i}",
                         model_type="supervised" if i < 3 else "unsupervised",
                         dataset_name=ds,
                         algorithm=algo,
                         accuracy=round(random.uniform(0.85, 0.99), 4),
-                        roc_auc=round(random.uniform(0.88, 0.985), 4),
+                        roc_auc=roc_auc,
                         f1_weighted=round(random.uniform(0.85, 0.98), 4),
-                        f1_macro=round(random.uniform(0.80, 0.97), 4)
+                        f1_macro=round(random.uniform(0.80, 0.97), 4),
+                        extra_metrics={
+                            "roc_auc_ci": {
+                                "point": roc_auc,
+                                "lower": round(max(0.0, roc_auc - spread), 4),
+                                "upper": round(min(1.0, roc_auc + spread), 4),
+                                "ci": 0.95,
+                            }
+                        },
                     ))
 
                 # Alerts
@@ -350,26 +361,61 @@ elif page == "Model Performance":
     try:
         df_runs = _run_query(
             "SELECT run_name, model_type, dataset_name, algorithm, "
-            "accuracy, roc_auc, f1_weighted, f1_macro, created_at "
+            "accuracy, roc_auc, f1_weighted, f1_macro, extra_metrics, created_at "
             "FROM model_runs ORDER BY created_at DESC"
         )
 
         if df_runs.empty:
             st.info("No model runs recorded yet.")
         else:
+            # Pull roc_auc_ci out of the extra_metrics JSON blob, if present
+            def _ci_bounds(raw):
+                if not raw:
+                    return None, None
+                try:
+                    meta = json.loads(raw) if isinstance(raw, str) else raw
+                    ci = meta.get("roc_auc_ci") if meta else None
+                    return (ci["lower"], ci["upper"]) if ci else (None, None)
+                except (TypeError, ValueError, KeyError):
+                    return None, None
+
+            ci_bounds = df_runs["extra_metrics"].apply(_ci_bounds)
+            df_runs["roc_auc_ci_lower"] = [b[0] for b in ci_bounds]
+            df_runs["roc_auc_ci_upper"] = [b[1] for b in ci_bounds]
+            has_ci = df_runs["roc_auc_ci_lower"].notna().any()
+
             st.markdown("#### All Experiment Runs")
+            display_cols = ["run_name", "model_type", "dataset_name", "algorithm",
+                             "accuracy", "roc_auc", "f1_weighted", "f1_macro", "created_at"]
             st.dataframe(
-                df_runs.style.background_gradient(subset=["roc_auc", "f1_weighted"],
-                                                   cmap="Greens"),
+                df_runs[display_cols].style.background_gradient(
+                    subset=["roc_auc", "f1_weighted"], cmap="Greens"),
                 use_container_width=True,
             )
 
             st.markdown("#### AUC Comparison by Algorithm")
-            fig = px.bar(
-                df_runs.dropna(subset=["roc_auc"]),
-                x="algorithm", y="roc_auc", color="dataset_name",
-                barmode="group", title="ROC AUC by Algorithm and Dataset",
-            )
+            plot_df = df_runs.dropna(subset=["roc_auc"])
+            if has_ci:
+                plot_df = plot_df.assign(
+                    err_plus=(plot_df["roc_auc_ci_upper"] - plot_df["roc_auc"]).clip(lower=0),
+                    err_minus=(plot_df["roc_auc"] - plot_df["roc_auc_ci_lower"]).clip(lower=0),
+                )
+                fig = px.bar(
+                    plot_df, x="algorithm", y="roc_auc", color="dataset_name",
+                    barmode="group", title="ROC AUC by Algorithm and Dataset (95% bootstrap CI)",
+                    error_y="err_plus", error_y_minus="err_minus",
+                )
+                st.caption(
+                    "Error bars are 95% bootstrap confidence intervals, not just point "
+                    "estimates. Runs whose intervals don't overlap are more likely to "
+                    "reflect a real difference rather than resampling noise — overlapping "
+                    "intervals aren't strong evidence either way on their own."
+                )
+            else:
+                fig = px.bar(
+                    plot_df, x="algorithm", y="roc_auc", color="dataset_name",
+                    barmode="group", title="ROC AUC by Algorithm and Dataset",
+                )
             st.plotly_chart(fig, use_container_width=True)
 
     except Exception as e:

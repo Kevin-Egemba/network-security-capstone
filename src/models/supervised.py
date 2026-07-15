@@ -200,7 +200,18 @@ class TwoStageDetector:
         }
 
     # ── Evaluation ────────────────────────────────────────────────────────────
-    def evaluate(self, X_test: np.ndarray, y_test: np.ndarray) -> Dict:
+    def evaluate(self, X_test: np.ndarray, y_test: np.ndarray, bootstrap: bool = False) -> Dict:
+        """
+        Evaluate Stage 1 on held-out data.
+
+        Parameters
+        ----------
+        bootstrap : bool
+            If True, add `roc_auc_ci` / `f1_ci` — bootstrap confidence
+            intervals instead of bare point estimates. Off by default since
+            1000 resamples adds real runtime cost; opt in for reporting, not
+            every training loop iteration.
+        """
         preds = self.predict(X_test)
         y_pred = preds["binary_pred"]
         y_proba = preds["attack_proba"]
@@ -212,6 +223,14 @@ class TwoStageDetector:
             "confusion_matrix": confusion_matrix(y_test, y_pred).tolist(),
             "classification_report": classification_report(y_test, y_pred),
         }
+
+        if bootstrap:
+            from src.models.evaluation import bootstrap_metric_ci
+
+            metrics["roc_auc_ci"] = bootstrap_metric_ci(y_test, y_proba, roc_auc_score)
+            metrics["f1_ci"] = bootstrap_metric_ci(
+                y_test, y_pred, lambda yt, yp: f1_score(yt, yp, average="weighted")
+            )
 
         logger.info(
             f"Stage 1 Evaluation — Accuracy: {metrics['accuracy']:.4f}  "
