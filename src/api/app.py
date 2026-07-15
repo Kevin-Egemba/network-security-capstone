@@ -37,7 +37,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from src.config import db_settings, Paths
-from src.db.connector import DatabaseManager, get_db
+from src.db.connector import DatabaseManager, get_db, get_default_manager, LOCKOUT_MINUTES
 from src.db.models import Alert, AlertStatus, ModelRun, User, UserRole
 
 
@@ -55,7 +55,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=db_settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -192,13 +192,15 @@ def health():
 
 
 @app.post("/auth/token", response_model=Token, tags=["Auth"])
-def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db),
-):
-    """Obtain a JWT access token."""
-    user = db.query(User).filter_by(username=form_data.username).first()
-    if not user or not _pwd_context.verify(form_data.password, user.hashed_password):
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    """Obtain a JWT access token. Locks the account after repeated failures."""
+    user, failure_reason = get_default_manager().authenticate(form_data.username, form_data.password)
+    if failure_reason == "locked":
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Account locked due to repeated failed logins. Try again in up to {LOCKOUT_MINUTES} minutes.",
+        )
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -207,9 +209,6 @@ def login(
         {"sub": user.username},
         expires_delta=timedelta(minutes=db_settings.access_token_expire_minutes),
     )
-    # Update last_login
-    user.last_login = datetime.utcnow()
-    db.commit()
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -241,6 +240,23 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)):
          dependencies=[Depends(_require_role(UserRole.admin))])
 def list_users(db: Session = Depends(get_db)):
     return db.query(User).all()
+
+
+@app.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Users"])
+def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_require_role(UserRole.admin)),
+):
+    """Permanently delete a user account (GDPR right to erasure). Admin only."""
+    if user_id == current_user.id:
+        raise HTTPException(400, "Cannot delete your own account")
+    user = db.query(User).filter_by(id=user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    db.delete(user)
+    db.commit()
+    logger.info(f"User deleted: {user.username} (by {current_user.username})")
 
 
 @app.get("/datasets", tags=["Data"])

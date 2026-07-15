@@ -27,6 +27,7 @@ Usage
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime, timedelta
 from typing import Generator
 
 from loguru import logger
@@ -38,6 +39,9 @@ from src.config import db_settings
 from src.db.models import Base, User, UserRole
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_MINUTES = 15
 
 
 class DatabaseManager:
@@ -169,6 +173,47 @@ class DatabaseManager:
     def list_users(self) -> list[User]:
         with self.get_session() as session:
             return session.query(User).all()
+
+    def delete_user(self, username: str) -> None:
+        """Permanently delete a user account (GDPR right to erasure)."""
+        with self.get_session() as session:
+            user = session.query(User).filter_by(username=username).first()
+            if not user:
+                raise ValueError(f"User '{username}' not found")
+            session.delete(user)
+            session.commit()
+            logger.info(f"User deleted: {username}")
+
+    def authenticate(self, username: str, password: str) -> tuple[User | None, str | None]:
+        """
+        Verify credentials with account lockout after repeated failures.
+
+        Returns (user, None) on success, or (None, reason) on failure where
+        reason is "locked" or "invalid".
+        """
+        with self.get_session() as session:
+            user = session.query(User).filter_by(username=username, is_active=True).first()
+            if not user:
+                return None, "invalid"
+
+            if user.locked_until and user.locked_until > datetime.utcnow():
+                return None, "locked"
+
+            if not _pwd_context.verify(password, user.hashed_password):
+                user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+                if user.failed_login_attempts >= MAX_FAILED_ATTEMPTS:
+                    user.locked_until = datetime.utcnow() + timedelta(minutes=LOCKOUT_MINUTES)
+                    logger.warning(f"User '{username}' locked out after {MAX_FAILED_ATTEMPTS} failed attempts.")
+                session.commit()
+                return None, "invalid"
+
+            user.failed_login_attempts = 0
+            user.locked_until = None
+            user.last_login = datetime.utcnow()
+            session.commit()
+            session.refresh(user)
+            session.expunge(user)
+            return user, None
 
 
 # ── FastAPI dependency ────────────────────────────────────────────────────────

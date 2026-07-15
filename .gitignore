@@ -1,11 +1,12 @@
-﻿.env
+.env
+.history/
 *.db
 venv/
 __pycache__/
 *.pyc
 *.pkl
 .ipynb_checkpoints/
-models/*.pkl
+
 logs/
 mlruns/
 *.egg-info/

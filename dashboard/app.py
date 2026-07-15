@@ -32,6 +32,7 @@ from sqlalchemy import text
 
 from src.config import Paths
 from src.db.connector import DatabaseManager
+from src.db.models import UserRole
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -46,10 +47,43 @@ st.set_page_config(
 def get_manager() -> DatabaseManager:
     mgr = DatabaseManager()
     mgr.create_tables()
+    mgr.bootstrap_admin()
     return mgr
 
 
 mgr = get_manager()
+
+
+# ── Authentication gate ───────────────────────────────────────────────────────
+def _login_screen() -> None:
+    st.title("🛡 Network Security Analytics")
+    st.markdown("Sign in to continue.")
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Sign in")
+
+    if submitted:
+        user, failure_reason = mgr.authenticate(username, password)
+        if failure_reason == "locked":
+            st.error("Account locked after repeated failed attempts. Try again later.")
+        elif not user:
+            st.error("Invalid username or password.")
+        else:
+            st.session_state.auth_user = {"username": user.username, "role": user.role.value}
+            st.rerun()
+
+    st.stop()
+
+
+if "auth_user" not in st.session_state:
+    st.session_state.auth_user = None
+
+if st.session_state.auth_user is None:
+    _login_screen()
+
+current_user = st.session_state.auth_user
+is_admin = current_user["role"] == UserRole.admin.value
 
 
 # ── Auto-seed on first run ────────────────────────────────────────────────────
@@ -151,19 +185,17 @@ auto_seed()
 
 # ── Sidebar navigation ────────────────────────────────────────────────────────
 st.sidebar.title("Network Security Analytics")
+st.sidebar.markdown(f"Signed in as **{current_user['username']}** ({current_user['role']})")
+if st.sidebar.button("Log out"):
+    st.session_state.auth_user = None
+    st.rerun()
 st.sidebar.markdown("---")
-page = st.sidebar.radio(
-    "Navigate",
-    [
-        "Overview",
-        "Threat Intelligence",
-        "Model Performance",
-        "Live Detection",
-        "Data Explorer",
-        "User Management",
-    ],
-    index=0,
-)
+
+nav_pages = ["Overview", "Threat Intelligence", "Model Performance", "Live Detection"]
+if is_admin:
+    nav_pages += ["Data Explorer", "User Management"]
+
+page = st.sidebar.radio("Navigate", nav_pages, index=0)
 st.sidebar.markdown("---")
 st.sidebar.caption("Network Security Capstone v1.0")
 
@@ -500,10 +532,7 @@ elif page == "Data Explorer":
 # ─────────────────────────────────────────────────────────────────────────────
 elif page == "User Management":
     st.title("User Management")
-    st.markdown(
-        "Manage platform users and roles. In production this page is "
-        "role-gated (admin only). The API at `/users` enforces this via JWT."
-    )
+    st.markdown("Manage platform users and roles. This page is admin-only.")
 
     try:
         df_users = _run_query(
@@ -528,8 +557,26 @@ elif page == "User Management":
         st.info(f"User data unavailable: {e}")
 
     st.markdown("---")
+    st.markdown("### Delete a User")
+    st.caption("GDPR right-to-erasure: permanently removes a user account.")
+    with st.form("delete_user_form"):
+        deletable = [
+            u for u in df_users["username"].tolist()
+            if not df_users.empty and u != current_user["username"]
+        ] if not df_users.empty else []
+        target_username = st.selectbox("User to delete", deletable) if deletable else None
+        delete_submitted = st.form_submit_button("Delete User", disabled=not deletable)
+
+    if delete_submitted and target_username:
+        try:
+            mgr.delete_user(target_username)
+            st.success(f"User '{target_username}' deleted.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Failed to delete user: {e}")
+
+    st.markdown("---")
     st.markdown("### Create New User")
-    st.markdown("_(In production this requires admin JWT via the REST API)_")
 
     with st.form("new_user_form"):
         col1, col2 = st.columns(2)

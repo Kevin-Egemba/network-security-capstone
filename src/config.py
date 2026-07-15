@@ -10,11 +10,13 @@ Usage
 """
 
 import os
+import secrets
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
 import yaml
 from dotenv import load_dotenv
+from loguru import logger
 
 # Load .env if present (silently skips if missing)
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
@@ -64,6 +66,37 @@ class Paths:
             attr.mkdir(parents=True, exist_ok=True)
 
 
+def _env_secret_key() -> str:
+    """
+    JWT signing key. Never falls back to a fixed/known string — an attacker
+    who knows a hardcoded fallback could forge admin tokens. If SECRET_KEY
+    isn't set, generate a random one for this process (existing tokens won't
+    survive a restart, which is safer than a shared constant).
+    """
+    key = os.getenv("SECRET_KEY")
+    if key:
+        return key
+    generated = secrets.token_hex(32)
+    logger.warning(
+        "SECRET_KEY not set — generated a random per-process key. "
+        "Set SECRET_KEY in your environment for stable sessions across restarts."
+    )
+    return generated
+
+
+def _env_admin_password() -> str:
+    """Bootstrap admin password. Never falls back to a known/weak default."""
+    pwd = os.getenv("ADMIN_PASSWORD")
+    if pwd:
+        return pwd
+    generated = secrets.token_urlsafe(15)
+    logger.warning(
+        f"ADMIN_PASSWORD not set — generated a random bootstrap password: {generated} "
+        "(shown once, check deployment logs). Set ADMIN_PASSWORD explicitly for production."
+    )
+    return generated
+
+
 # ── Settings loaded from YAML + environment ───────────────────────────────────
 @dataclass
 class ModelSettings:
@@ -86,6 +119,11 @@ class ModelSettings:
         return self._raw.get(key, default)
 
 
+def _env_cors_origins() -> list[str]:
+    raw = os.getenv("CORS_ORIGINS", "http://localhost:8501")
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
 @dataclass
 class DatabaseSettings:
     database_url: str = field(
@@ -95,16 +133,17 @@ class DatabaseSettings:
     pool_pre_ping: bool = True
 
     # JWT / Auth
-    secret_key: str = field(
-        default_factory=lambda: os.getenv("SECRET_KEY", "insecure-dev-key-change-in-production")
-    )
+    secret_key: str = field(default_factory=lambda: _env_secret_key())
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
 
     # Admin bootstrap
     admin_username: str = field(default_factory=lambda: os.getenv("ADMIN_USERNAME", "admin"))
     admin_email: str = field(default_factory=lambda: os.getenv("ADMIN_EMAIL", "admin@example.com"))
-    admin_password: str = field(default_factory=lambda: os.getenv("ADMIN_PASSWORD", "changeme"))
+    admin_password: str = field(default_factory=lambda: _env_admin_password())
+
+    # CORS — comma-separated list of allowed origins (never combine "*" with credentials)
+    cors_origins: list = field(default_factory=_env_cors_origins)
 
 
 @dataclass

@@ -70,7 +70,6 @@ def seed():
                 event_id=random.randint(1, 500),
                 args_num=random.randint(0, 10),
                 return_value=random.randint(-1, 100),
-                sus=round(random.uniform(0, 1), 4),
                 evil=1 if random.random() > 0.85 else 0,
             ))
         session.bulk_save_objects(syscalls)

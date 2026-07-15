@@ -227,6 +227,14 @@ python -m pytest tests/ -v
 
 ---
 
+## 🔒 Security & Privacy
+
+The dashboard and API require authentication (session login for Streamlit, JWT for the API), with role-based access to admin features (User Management, Data Explorer) and account lockout after repeated failed logins.
+
+The `users` table stores real personal data (username, email, login timestamps) once populated. This project is a portfolio/demo, not a compliant production system — before putting any real person's data in it: only use synthetic/seeded data (the default), and note that GDPR-required capabilities like data export, consent tracking, and retention limits are not implemented (an admin-only delete-user action is available as a minimal right-to-erasure control).
+
+---
+
 ## 🛠️ Tech Stack
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue)

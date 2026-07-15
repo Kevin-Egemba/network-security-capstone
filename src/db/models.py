@@ -82,6 +82,8 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=func.now())
     last_login = Column(DateTime, nullable=True)
+    failed_login_attempts = Column(Integer, default=0, nullable=False)
+    locked_until = Column(DateTime, nullable=True)
 
     # Relationships
     alerts_acknowledged = relationship("Alert", back_populates="acknowledged_by_user",
