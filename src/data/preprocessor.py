@@ -133,6 +133,21 @@ class UNSWPreprocessor:
             y_enc = y.values
         return X, y_enc
 
+    def transform_live(self, **fields) -> np.ndarray:
+        """
+        Transform a single live feature dict (e.g. an API request body) into
+        the same feature space as fit_transform/transform — without needing
+        a label column, since real-time inference has no ground truth to pop.
+
+        Any field not provided falls back to 0 (numeric) or "-" (categorical),
+        matching NetworkFlowInput's own defaults.
+        """
+        if self._pipeline is None:
+            raise RuntimeError("Call fit_transform before transform_live")
+        row = {c: fields.get(c, 0) for c in self._num_cols}
+        row.update({c: fields.get(c, "-") for c in self._cat_cols})
+        return self._pipeline.transform(pd.DataFrame([row]))
+
     def _build_feature_names(self) -> List[str]:
         names = list(self._num_cols)
         try:

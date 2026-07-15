@@ -115,8 +115,10 @@ class TwoStageDetector:
                 C=1.0, max_iter=1000, class_weight="balanced",
                 random_state=settings.random_seed
             )
-        return _make_xgb(n_estimators=300, max_depth=6, learning_rate=0.1,
-                         scale_pos_weight=2)
+        # scale_pos_weight is set per-dataset in fit() — hardcoding a fixed
+        # value here assumes attack is always the minority class, which
+        # isn't true for every split (UNSW-NB15's is ~68% attack).
+        return _make_xgb(n_estimators=300, max_depth=6, learning_rate=0.1)
 
     def _build_stage2(self, name: str) -> Any:
         if name == "xgb":
@@ -142,6 +144,13 @@ class TwoStageDetector:
         attack-only subset of X_train / y_binary (y_binary used as filter).
         """
         logger.info("Fitting Stage 1: binary detection…")
+        if self.stage1_name == "xgb":
+            n_pos = int(np.sum(y_binary == 1))
+            n_neg = int(np.sum(y_binary == 0))
+            if n_pos > 0 and n_neg > 0:
+                ratio = n_neg / n_pos
+                self.stage1_model.set_params(scale_pos_weight=ratio)
+                logger.info(f"  scale_pos_weight={ratio:.3f} (n_neg={n_neg:,}, n_pos={n_pos:,})")
         self.stage1_model.fit(X_train, y_binary)
 
         # Stage 2 — train on attack samples only

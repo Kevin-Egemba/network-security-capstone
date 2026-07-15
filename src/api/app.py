@@ -26,7 +26,6 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import joblib
-import numpy as np
 from fastapi import Depends, FastAPI, HTTPException, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -296,27 +295,28 @@ def predict_network(
 ):
     """
     Predict whether a network flow is an attack.
-    Returns binary prediction + attack type if flagged.
+    Runs the full two-stage pipeline: Stage 1 flags suspicious flows, Stage 2
+    classifies the attack type for anything flagged.
     """
-    # Build feature array matching training schema
-    feature_row = np.array([[
-        payload.dur, payload.sbytes, payload.dbytes,
-        payload.sttl, payload.dttl, payload.spkts, payload.dpkts,
-    ]])
-
     try:
         model = _load_model("two_stage_detector")
         preprocessor = _load_model("unsw_preprocessor")
-        # If preprocessor available, transform
-        # (simplified path — full pipeline in notebooks)
-        result = model.stage1_model.predict_proba(feature_row)[0]
-        attack_proba = float(result[1])
-        is_attack = attack_proba >= 0.5
+
+        X = preprocessor.transform_live(
+            proto=payload.proto, service=payload.service, state=payload.state,
+            dur=payload.dur, sbytes=payload.sbytes, dbytes=payload.dbytes,
+            sttl=payload.sttl, dttl=payload.dttl, spkts=payload.spkts, dpkts=payload.dpkts,
+        )
+        result = model.predict(X)
+        is_attack = bool(result["binary_pred"][0])
+        attack_proba = float(result["attack_proba"][0])
+        attack_type = str(result["attack_type"][0]) if is_attack else None
+
         return PredictionOut(
             is_attack=is_attack,
             attack_probability=round(attack_proba, 4),
-            attack_type="Unknown" if is_attack else None,
-            confidence=round(max(result), 4),
+            attack_type=attack_type,
+            confidence=round(attack_proba if is_attack else 1 - attack_proba, 4),
         )
     except HTTPException:
         raise

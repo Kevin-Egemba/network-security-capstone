@@ -476,24 +476,30 @@ elif page == "Live Detection":
 
     if submitted:
         model_path = Paths.MODELS / "two_stage_detector.pkl"
-        if not model_path.exists():
+        prep_path = Paths.MODELS / "unsw_preprocessor.pkl"
+        if not model_path.exists() or not prep_path.exists():
             st.warning(
-                "No trained model found. Run notebook `03_unsw_supervised.ipynb` "
-                "and save the model to `models/two_stage_detector.pkl`."
+                "No trained model found. Run `python train_two_stage_detector.py` "
+                "to train and save the two-stage detector + preprocessor."
             )
         else:
             import joblib
-            import numpy as np
             model = joblib.load(model_path)
-            X = np.array([[dur, sbytes, dbytes, sttl, dttl, spkts, dpkts]])
+            prep = joblib.load(prep_path)
             try:
-                proba = model.stage1_model.predict_proba(X)[0]
-                attack_proba = proba[1]
-                is_attack = attack_proba >= 0.5
+                X = prep.transform_live(
+                    proto=proto, service=service, state=state,
+                    dur=dur, sbytes=sbytes, dbytes=dbytes,
+                    sttl=sttl, dttl=dttl, spkts=spkts, dpkts=dpkts,
+                )
+                result = model.predict(X)
+                is_attack = bool(result["binary_pred"][0])
+                attack_proba = float(result["attack_proba"][0])
+                attack_type = str(result["attack_type"][0]) if is_attack else None
 
                 result_col1, result_col2 = st.columns(2)
                 if is_attack:
-                    result_col1.error(f"ATTACK DETECTED — {attack_proba:.1%} confidence")
+                    result_col1.error(f"ATTACK DETECTED — {attack_type} ({attack_proba:.1%} confidence)")
                 else:
                     result_col1.success(f"Normal Traffic — {1 - attack_proba:.1%} confidence")
 
