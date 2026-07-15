@@ -84,7 +84,15 @@ class DatabaseManager:
 
     # ── Table management ──────────────────────────────────────────────────────
     def create_tables(self) -> None:
-        """Create all tables defined in models.py (idempotent)."""
+        """
+        Create all tables defined in models.py (idempotent).
+
+        Convenience bootstrap for local dev / ephemeral demo deployments
+        (e.g. Streamlit Cloud). Schema changes should go through Alembic
+        migrations (`alembic revision --autogenerate`, `alembic upgrade
+        head`) — this method won't apply column/index changes to a
+        database that already has the tables.
+        """
         Base.metadata.create_all(bind=self.engine)
         logger.info("All tables created (or already exist).")
 

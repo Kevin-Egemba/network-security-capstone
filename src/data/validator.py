@@ -135,7 +135,7 @@ class DataValidator:
         if BETH_TARGET in df.columns:
             evil_pct = df[BETH_TARGET].mean()
             report.stats["evil_pct"] = f"{evil_pct:.3%}"
-            if evil_pct < 0.01:
+            if evil_pct < 0.05:
                 report.warnings.append(
                     f"Extremely sparse labels: only {evil_pct:.2%} evil events. "
                     "Supervised learning is unreliable — use unsupervised methods."
