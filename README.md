@@ -162,12 +162,22 @@ python -m src.db.connector --create
 # 6. Ingest datasets
 python -m src.db.ingest --dataset all
 
-# 7. Start API (terminal 1)
+# 7. Train the two-stage detector (needed for Live Detection / /predict/network —
+#    without this step they degrade gracefully with a warning, not a crash)
+python train_two_stage_detector.py
+
+# 8. Start API (terminal 1)
 uvicorn src.api.app:app --port 8000
 
-# 8. Start dashboard (terminal 2)
+# 9. Start dashboard (terminal 2)
 streamlit run dashboard/app.py
 ```
+
+No `data/` files yet? Steps 1–5 and 8–9 work fine without them — the dashboard
+auto-seeds synthetic data on first run, so Overview/Threat Intelligence/Model
+Performance/User Management all work immediately. Only step 6 (real dataset
+ingestion) and step 7 (training) need the actual CSVs from the sources listed
+below.
 
 ### Option B — Docker + PostgreSQL
 

@@ -28,7 +28,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-netsec_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in your .env file — see .env.example}
       POSTGRES_DB: ${DB_NAME:-network_security_db}
     ports:
       - "5432:5432"
@@ -49,11 +49,11 @@ services:
     container_name: netsec_api
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${DB_USER:-netsec_user}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-network_security_db}
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      DATABASE_URL: postgresql://${DB_USER:-netsec_user}:${DB_PASSWORD:?Set DB_PASSWORD in your .env file — see .env.example}@db:5432/${DB_NAME:-network_security_db}
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in your .env file — see .env.example}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in your .env file — see .env.example}
     ports:
       - "8000:8000"
     depends_on:
@@ -76,7 +76,7 @@ services:
     container_name: netsec_dashboard
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${DB_USER:-netsec_user}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-network_security_db}
+      DATABASE_URL: postgresql://${DB_USER:-netsec_user}:${DB_PASSWORD:?Set DB_PASSWORD in your .env file — see .env.example}@db:5432/${DB_NAME:-network_security_db}
     ports:
       - "8501:8501"
     depends_on:
