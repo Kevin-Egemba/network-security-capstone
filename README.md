@@ -1,33 +1,45 @@
 # 🛡️ Network Security Analytics Platform
 
-> Production-grade ML platform for network intrusion detection, behavioral anomaly analysis, and threat classification — demonstrating the complete data lifecycle from raw CSV ingestion through database storage, model training, REST API serving, and interactive dashboard.
+> An end-to-end ML platform for network intrusion detection, behavioral anomaly analysis, and threat classification — the full data lifecycle from raw CSV ingestion through database storage, model training, a JWT-secured REST API, and an authenticated, role-gated dashboard.
 
-Built as an MS Data Science capstone at **Boston University**, this platform intentionally spans the full stack of skills expected from a **Data Analyst**, **Data Scientist**, and **Data Engineer**.
+Built as an MS Data Science capstone at **Boston University**, this platform intentionally spans the full stack of skills expected from a **Data Analyst**, **Data Scientist**, and **Data Engineer** — including a real security remediation pass (see [Security & Privacy](#-security--privacy) below) rather than just a modeling notebook.
 
 ---
 
-## 🚀 Live Demo
+## 🔌 Running It
+
+Follows [Quick Start](#-quick-start) below. Once running locally:
 
 | Service | URL |
 |---------|-----|
 | 📊 Streamlit Dashboard | `http://localhost:8501` |
 | 🔌 FastAPI + Swagger UI | `http://localhost:8000/docs` |
 
+No hosted demo — the ML artifacts alone are ~180MB and the datasets aren't
+redistributed (see [Quick Start](#-quick-start) for sources), so this runs
+locally rather than as a public deployment.
+
 ---
 
 ## 📸 Dashboard Screenshots
 
-> **Overview Page** — Platform KPIs with 1.4M+ events live from database
+**Overview** — Platform KPIs against real ingested data (257K+ network events, 1.1M+ syscall events)
+![Overview](docs/screenshots/01_overview.png)
 
-> **Threat Intelligence** — Attack distribution, alert queue, Plotly charts
+**Threat Intelligence** — Attack category distribution and the SOC-style alert queue
+![Threat Intelligence](docs/screenshots/02_threat_intelligence.png)
 
-> **Live Detection** — Submit a network flow, get real-time attack prediction with gauge chart
+**Model Performance** — Real training runs with 95% bootstrap confidence intervals, not just point estimates
+![Model Performance](docs/screenshots/03_model_performance.png)
 
-> **Data Explorer** — Run raw SQL against the live database from the browser
+**Live Detection** — Real two-stage prediction: binary flag + attack-type classification, not a stub
+![Live Detection](docs/screenshots/04_live_detection.png)
 
-> **Model Performance** — Experiment leaderboard with AUC comparisons
+**Data Explorer** — Real SQL (including a window function) against the live database, admin-only
+![Data Explorer](docs/screenshots/05_data_explorer.png)
 
-> **User Management** — Admin panel with role-based access control
+**User Management** — Role-based access control, admin-only
+![User Management](docs/screenshots/06_user_management.png)
 
 ---
 

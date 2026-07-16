@@ -394,7 +394,17 @@ elif page == "Model Performance":
             )
 
             st.markdown("#### AUC Comparison by Algorithm")
-            plot_df = df_runs.dropna(subset=["roc_auc"])
+            st.caption(
+                "Latest run per algorithm/dataset — re-running training for the "
+                "same algorithm adds a new row to the table above without "
+                "cluttering this comparison."
+            )
+            plot_df = df_runs.dropna(subset=["roc_auc"]).copy()
+            plot_df["created_at"] = pd.to_datetime(plot_df["created_at"])
+            plot_df = (
+                plot_df.sort_values("created_at")
+                .drop_duplicates(subset=["algorithm", "dataset_name"], keep="last")
+            )
             if has_ci:
                 plot_df = plot_df.assign(
                     err_plus=(plot_df["roc_auc_ci_upper"] - plot_df["roc_auc"]).clip(lower=0),
