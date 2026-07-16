@@ -167,6 +167,39 @@ class TestUNSWPreprocessor:
         unique_vals = np.unique(X)
         assert len(unique_vals) > 2
 
+    def test_transform_live_matches_transform_batch_single_row(self, df_unsw):
+        prep = UNSWPreprocessor()
+        prep.fit_transform(df_unsw, target="label")
+        fields = {"proto": "tcp", "service": "http", "state": "FIN",
+                   "dur": 0.5, "sbytes": 1024, "dbytes": 512,
+                   "sttl": 64, "dttl": 64, "spkts": 3, "dpkts": 2}
+        X_live = prep.transform_live(**fields)
+        X_batch = prep.transform_batch([fields])
+        assert X_live.shape == (1, X_batch.shape[1])
+        np.testing.assert_array_almost_equal(X_live, X_batch)
+
+    def test_transform_batch_handles_multiple_records(self, df_unsw):
+        prep = UNSWPreprocessor()
+        prep.fit_transform(df_unsw, target="label")
+        records = [
+            {"proto": "tcp", "dur": 0.1, "sbytes": 100},
+            {"proto": "udp", "service": "dns", "dur": 5.0, "sbytes": 90000},
+        ]
+        X = prep.transform_batch(records)
+        assert X.shape[0] == 2
+
+    def test_transform_batch_fills_missing_fields_with_defaults(self, df_unsw):
+        """Fields not provided should fall back to 0 / '-', not raise."""
+        prep = UNSWPreprocessor()
+        prep.fit_transform(df_unsw, target="label")
+        X = prep.transform_batch([{}])
+        assert X.shape[0] == 1
+
+    def test_transform_live_before_fit_raises(self):
+        prep = UNSWPreprocessor()
+        with pytest.raises(RuntimeError):
+            prep.transform_live(proto="tcp")
+
 
 class TestBETHPreprocessor:
 

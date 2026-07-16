@@ -133,20 +133,28 @@ class UNSWPreprocessor:
             y_enc = y.values
         return X, y_enc
 
-    def transform_live(self, **fields) -> np.ndarray:
+    def transform_batch(self, records: List[dict]) -> np.ndarray:
         """
-        Transform a single live feature dict (e.g. an API request body) into
-        the same feature space as fit_transform/transform — without needing
-        a label column, since real-time inference has no ground truth to pop.
+        Transform multiple live feature dicts at once (e.g. a bulk API
+        request body) — one pipeline.transform() call over all rows rather
+        than one per record, without needing a label column since real-time
+        inference has no ground truth to pop.
 
-        Any field not provided falls back to 0 (numeric) or "-" (categorical),
-        matching NetworkFlowInput's own defaults.
+        Any field not provided per-record falls back to 0 (numeric) or "-"
+        (categorical), matching NetworkFlowInput's own defaults.
         """
         if self._pipeline is None:
-            raise RuntimeError("Call fit_transform before transform_live")
-        row = {c: fields.get(c, 0) for c in self._num_cols}
-        row.update({c: fields.get(c, "-") for c in self._cat_cols})
-        return self._pipeline.transform(pd.DataFrame([row]))
+            raise RuntimeError("Call fit_transform before transform_batch")
+        rows = []
+        for fields in records:
+            row = {c: fields.get(c, 0) for c in self._num_cols}
+            row.update({c: fields.get(c, "-") for c in self._cat_cols})
+            rows.append(row)
+        return self._pipeline.transform(pd.DataFrame(rows))
+
+    def transform_live(self, **fields) -> np.ndarray:
+        """Single-record convenience wrapper around transform_batch."""
+        return self.transform_batch([fields])
 
     def _build_feature_names(self) -> List[str]:
         names = list(self._num_cols)

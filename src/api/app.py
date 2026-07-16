@@ -126,6 +126,10 @@ class PredictionOut(BaseModel):
     model_version: str = "1.0.0"
 
 
+class BulkPredictionRequest(BaseModel):
+    records: List[NetworkFlowInput] = Field(..., min_length=1, max_length=1000)
+
+
 class AlertOut(BaseModel):
     id: int
     title: str
@@ -288,6 +292,31 @@ def list_model_runs(
     ]
 
 
+def _flow_fields(payload: NetworkFlowInput) -> dict:
+    return {
+        "proto": payload.proto, "service": payload.service, "state": payload.state,
+        "dur": payload.dur, "sbytes": payload.sbytes, "dbytes": payload.dbytes,
+        "sttl": payload.sttl, "dttl": payload.dttl,
+        "spkts": payload.spkts, "dpkts": payload.dpkts,
+    }
+
+
+def _predictions_from_result(result: dict) -> List[PredictionOut]:
+    out = []
+    for is_attack, proba, atype in zip(
+        result["binary_pred"], result["attack_proba"], result["attack_type"]
+    ):
+        is_attack = bool(is_attack)
+        proba = float(proba)
+        out.append(PredictionOut(
+            is_attack=is_attack,
+            attack_probability=round(proba, 4),
+            attack_type=str(atype) if is_attack else None,
+            confidence=round(proba if is_attack else 1 - proba, 4),
+        ))
+    return out
+
+
 @app.post("/predict/network", response_model=PredictionOut, tags=["Predict"])
 def predict_network(
     payload: NetworkFlowInput,
@@ -301,27 +330,31 @@ def predict_network(
     try:
         model = _load_model("two_stage_detector")
         preprocessor = _load_model("unsw_preprocessor")
-
-        X = preprocessor.transform_live(
-            proto=payload.proto, service=payload.service, state=payload.state,
-            dur=payload.dur, sbytes=payload.sbytes, dbytes=payload.dbytes,
-            sttl=payload.sttl, dttl=payload.dttl, spkts=payload.spkts, dpkts=payload.dpkts,
-        )
+        X = preprocessor.transform_live(**_flow_fields(payload))
         result = model.predict(X)
-        is_attack = bool(result["binary_pred"][0])
-        attack_proba = float(result["attack_proba"][0])
-        attack_type = str(result["attack_type"][0]) if is_attack else None
-
-        return PredictionOut(
-            is_attack=is_attack,
-            attack_probability=round(attack_proba, 4),
-            attack_type=attack_type,
-            confidence=round(attack_proba if is_attack else 1 - attack_proba, 4),
-        )
+        return _predictions_from_result(result)[0]
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(500, f"Prediction failed: {e}")
+
+
+@app.post("/predict/bulk", response_model=List[PredictionOut], tags=["Predict"])
+def predict_bulk(
+    payload: BulkPredictionRequest,
+    _: User = Depends(_get_current_user),
+):
+    """Batch version of /predict/network — up to 1000 records per request."""
+    try:
+        model = _load_model("two_stage_detector")
+        preprocessor = _load_model("unsw_preprocessor")
+        X = preprocessor.transform_batch([_flow_fields(r) for r in payload.records])
+        result = model.predict(X)
+        return _predictions_from_result(result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Bulk prediction failed: {e}")
 
 
 @app.get("/alerts", response_model=List[AlertOut], tags=["Alerts"])
